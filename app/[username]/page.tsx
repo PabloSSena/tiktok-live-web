@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 
 type PixCharge = {
   chargeId: string;
@@ -9,6 +9,11 @@ type PixCharge = {
   copiaCola: string;
   expiresAt: string;
   status: string;
+};
+
+type Streamer = {
+  id: string;
+  username: string;
 };
 
 type View = 'form' | 'payment';
@@ -44,13 +49,13 @@ function PixIcon() {
   );
 }
 
-export default function Home() {
-  const router = useRouter();
+export default function StreamerPage() {
+  const params = useParams();
+  const username = params.username as string;
 
-  useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) router.push('/login');
-  }, [router]);
+  const [streamer, setStreamer] = useState<Streamer | null>(null);
+  const [notFound, setNotFound] = useState(false);
+  const [loadingStreamer, setLoadingStreamer] = useState(true);
 
   const [view, setView] = useState<View>('form');
   const [formData, setFormData] = useState({
@@ -66,6 +71,20 @@ export default function Home() {
 
   const messageMaxLength = 70;
 
+  useEffect(() => {
+    fetch(`http://localhost:3001/users/${username}`)
+      .then(async (res) => {
+        if (res.status === 404) {
+          setNotFound(true);
+          return;
+        }
+        const { data } = await res.json();
+        setStreamer(data);
+      })
+      .catch(() => setNotFound(true))
+      .finally(() => setLoadingStreamer(false));
+  }, [username]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -79,9 +98,7 @@ export default function Home() {
     const cents = parseToCents(formData.amount);
 
     try {
-      const userRaw = localStorage.getItem('user');
-      const user = userRaw ? JSON.parse(userRaw) : null;
-      const streamerId = user?.id ?? '';
+      const streamerId = streamer!.id;
       const referenceId = `order-${Date.now()}`;
 
       const res = await fetch('http://localhost:3001/pix/charge', {
@@ -133,13 +150,38 @@ export default function Home() {
     setPaidConfirmed(true);
   };
 
+  if (loadingStreamer) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0E0E0E] p-4">
+        <div className="w-full max-w-md bg-[#1A1A1A] border border-[#353534] rounded-lg p-8 flex flex-col items-center gap-4">
+          <div className="w-24 h-24 bg-[#353534] rounded-full animate-pulse" />
+          <div className="h-5 w-32 bg-[#353534] rounded animate-pulse" />
+          <div className="h-4 w-48 bg-[#353534] rounded animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0E0E0E] p-4">
+        <main className="w-full max-w-md bg-[#1A1A1A] border border-[#353534] rounded-lg p-8 flex flex-col items-center gap-4 text-center">
+          <p className="text-5xl">😕</p>
+          <h1 className="text-xl font-bold text-white">Streamer não encontrado</h1>
+          <p className="text-sm text-[#9B9B9B]">
+            O usuário <span className="font-mono font-semibold text-white">{username}</span> não existe.
+          </p>
+        </main>
+      </div>
+    );
+  }
+
   if (view === 'payment' && charge) {
     const cents = parseToCents(formData.amount);
 
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0E0E0E] p-4">
         <main className="w-full max-w-md bg-[#1A1A1A] border border-[#353534] rounded-lg p-8 flex flex-col gap-6">
-          {/* Header */}
           <div className="flex flex-col items-center gap-1">
             <div className="w-12 h-12 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center text-green-500 mb-1">
               <PixIcon />
@@ -148,14 +190,12 @@ export default function Home() {
             <p className="text-sm text-[#9B9B9B]">Copie o código e pague pelo app do seu banco</p>
           </div>
 
-          {/* Amount */}
           <div className="text-center">
             <span className="text-5xl font-bold text-white tabular-nums">
               {formatCurrency(cents)}
             </span>
           </div>
 
-          {/* Copia e Cola */}
           <div className="flex flex-col gap-2">
             <label className="text-[11px] font-bold uppercase tracking-widest text-[#9B9B9B]">
               Código Pix Copia e Cola
@@ -169,7 +209,6 @@ export default function Home() {
             />
           </div>
 
-          {/* Copy Button */}
           <button
             onClick={handleCopy}
             className={`w-full py-4 rounded font-bold text-[13px] uppercase tracking-wide transition-colors duration-150 ${
@@ -181,12 +220,10 @@ export default function Home() {
             {copied ? '✓ Copiado!' : 'Copiar código Pix'}
           </button>
 
-          {/* Expiry */}
           <p className="text-xs text-center text-[#9B9B9B]">
             Válido até {formatExpiry(charge.expiresAt)}
           </p>
 
-          {/* Payment confirmation */}
           {paidConfirmed ? (
             <div className="rounded bg-green-500/10 border border-green-500/30 px-4 py-3 text-center">
               <p className="text-green-500 font-medium text-sm">
@@ -212,7 +249,6 @@ export default function Home() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#0E0E0E] p-4">
       <main className="w-full max-w-md bg-[#1A1A1A] border border-[#353534] rounded-lg p-8">
-        {/* Profile Section */}
         <div className="flex flex-col items-center mb-6">
           <div className="w-24 h-24 bg-[#353534] rounded-full mb-3 flex items-center justify-center">
             <svg className="w-12 h-12 text-[#9B9B9B]" fill="currentColor" viewBox="0 0 20 20">
@@ -221,7 +257,7 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-2 mb-2">
-            <h1 className="text-xl font-bold text-white">Nome streamer</h1>
+            <h1 className="text-xl font-bold text-white">{streamer!.username}</h1>
             <svg className="w-5 h-5 text-[#EF1A2D]" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
             </svg>
@@ -231,7 +267,6 @@ export default function Home() {
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          {/* Username Field */}
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-bold uppercase tracking-widest text-[#9B9B9B]">
               Seu nome de usuário
@@ -247,7 +282,6 @@ export default function Home() {
             />
           </div>
 
-          {/* Message Field */}
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-bold uppercase tracking-widest text-[#9B9B9B]">
               Mensagem
@@ -266,7 +300,6 @@ export default function Home() {
             </span>
           </div>
 
-          {/* Amount Field */}
           <div className="flex flex-col gap-1">
             <label className="text-[11px] font-bold uppercase tracking-widest text-[#9B9B9B]">
               Valor
@@ -286,14 +319,12 @@ export default function Home() {
             </span>
           </div>
 
-          {/* Error */}
           {error && (
             <div className="rounded bg-[#EF1A2D]/10 border border-[#EF1A2D]/30 px-4 py-3">
               <p className="text-[#EF1A2D] text-sm">{error}</p>
             </div>
           )}
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
